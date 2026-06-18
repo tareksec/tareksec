@@ -1,0 +1,544 @@
+;---
+// blog.astro — Techvrs Blog Page
+// Dynamically fetches latest posts from Medium via rss2json (client-side)
+// No redeploy needed when new posts are published on Medium.
+
+interface Props {
+  title?: string;
+}
+
+const pageTitle = "Blog | Muhammad Tarek — Techvrs";
+const pageDesc  = "SOC learning notes, TryHackMe writeups, and cybersecurity lab documentation.";
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{pageTitle}</title>
+  <meta name="description" content={pageDesc} />
+  <meta name="author" content="Muhammad Tarek" />
+  <meta property="og:title" content={pageTitle} />
+  <meta property="og:description" content={pageDesc} />
+  <meta property="og:url" content="https://techvrs.com/blog/" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="/assets/whitemode/favicon.svg" type="image/svg+xml" />
+
+  <!-- Tailwind CSS via CDN (replace with your project's Tailwind build in production) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              brown:     '#8B5E3C',
+              brownDark: '#6b4423',
+              brownLight:'#a97850',
+              surface:   '#fdf8f4',
+              border:    '#e8ddd4',
+              text:      '#2c1a0e',
+              muted:     '#7a6254',
+            }
+          },
+          fontFamily: {
+            mono: ['"JetBrains Mono"', 'Consolas', 'monospace'],
+          },
+          animation: {
+            'fade-up': 'fadeUp 0.5s ease both',
+          },
+          keyframes: {
+            fadeUp: {
+              '0%':   { opacity: '0', transform: 'translateY(16px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- JetBrains Mono for terminal aesthetic (matches site theme) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono-custom { font-family: 'JetBrains Mono', monospace; }
+
+    /* Line-clamp utilities */
+    .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .line-clamp-3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+    /* Smooth card hover lift */
+    .blog-card { transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .blog-card:hover { transform: translateY(-4px); box-shadow: 0 12px 32px -8px rgba(139,94,60,0.18); }
+
+    /* Stagger animation for cards */
+    .blog-card:nth-child(1)  { animation-delay: 0.05s; }
+    .blog-card:nth-child(2)  { animation-delay: 0.10s; }
+    .blog-card:nth-child(3)  { animation-delay: 0.15s; }
+    .blog-card:nth-child(4)  { animation-delay: 0.20s; }
+    .blog-card:nth-child(5)  { animation-delay: 0.25s; }
+    .blog-card:nth-child(6)  { animation-delay: 0.30s; }
+    .blog-card:nth-child(7)  { animation-delay: 0.35s; }
+    .blog-card:nth-child(8)  { animation-delay: 0.40s; }
+    .blog-card:nth-child(9)  { animation-delay: 0.45s; }
+
+    /* Skeleton shimmer override */
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skeleton {
+      background: linear-gradient(90deg, #f0e8e0 25%, #fdf8f4 50%, #f0e8e0 75%);
+      background-size: 800px 100%;
+      animation: shimmer 1.4s infinite linear;
+    }
+
+    /* Active filter pill */
+    .filter-btn.active {
+      background-color: #8B5E3C;
+      color: #ffffff;
+      border-color: #8B5E3C;
+    }
+  </style>
+</head>
+
+<body class="bg-brand-surface text-brand-text antialiased">
+
+  <!-- ─── NAVBAR (matches site navigation) ─── -->
+  <header class="sticky top-0 z-50 bg-brand-surface/90 backdrop-blur-sm border-b border-brand-border">
+    <nav class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2 shrink-0">
+        <img src="/assets/whitemode/favicon.svg" alt="Techvrs" class="h-7 w-7" />
+        <span class="font-mono-custom text-sm font-600 text-brand-brown hidden sm:block">techvrs</span>
+      </a>
+      <ul class="flex items-center gap-1 sm:gap-2 text-sm font-medium text-brand-muted">
+        <li><a href="/"           class="hover:text-brand-brown px-2 py-1 rounded transition-colors">Home</a></li>
+        <li><a href="/portfolio/" class="hover:text-brand-brown px-2 py-1 rounded transition-colors">Portfolio</a></li>
+        <li><a href="/projects/"  class="hover:text-brand-brown px-2 py-1 rounded transition-colors">Projects</a></li>
+        <li><a href="/blog/"      class="text-brand-brown bg-brand-brown/10 px-2 py-1 rounded transition-colors">Blog</a></li>
+        <li><a href="/security/"  class="hover:text-brand-brown px-2 py-1 rounded transition-colors">Security</a></li>
+        <li><a href="/#contact"   class="hover:text-brand-brown px-2 py-1 rounded transition-colors">Contact</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <!-- ─── HERO / PAGE HEADER ─── -->
+  <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-10">
+    <p class="font-mono-custom text-xs text-brand-brown tracking-widest uppercase mb-3">Learning in Public</p>
+    <h1 class="text-3xl sm:text-4xl lg:text-5xl font-semibold text-brand-text leading-tight mb-4">
+      Security Notes &amp; Writeups
+    </h1>
+    <p class="text-brand-muted max-w-xl text-base sm:text-lg leading-relaxed">
+      SOC learning notes, TryHackMe writeups, certification study guides, and cybersecurity lab documentation — fetched live from Medium.
+    </p>
+
+    <!-- Live badge -->
+    <div class="flex items-center gap-2 mt-5">
+      <span class="relative flex h-2 w-2">
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-500 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+      </span>
+      <span class="font-mono-custom text-xs text-brand-muted">Live from Medium · auto-updates on publish</span>
+    </div>
+  </section>
+
+  <!-- ─── FILTER BAR ─── -->
+  <section class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+    <div id="filter-bar" class="flex flex-wrap gap-2">
+      <!-- Filter pills are injected by JS once tags are known -->
+      <!-- Shown as static placeholders until posts load -->
+      <button
+        data-tag="all"
+        class="filter-btn active font-mono-custom text-xs px-3 py-1.5 rounded-full border border-brand-border
+               text-brand-muted transition-all duration-200 hover:border-brand-brown hover:text-brand-brown">
+        All Posts
+      </button>
+    </div>
+  </section>
+
+  <!-- ─── MAIN CONTENT ─── -->
+  <main id="main-content" class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-20">
+
+    <!-- Post count indicator -->
+    <p id="post-count" class="font-mono-custom text-xs text-brand-muted mb-6 hidden">
+      Showing <span id="count-visible">0</span> of <span id="count-total">0</span> articles
+    </p>
+
+    <!-- ── SKELETON LOADING STATE ── -->
+    <div id="skeleton-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {Array.from({ length: 6 }).map(() => (
+        <div class="rounded-2xl border border-brand-border overflow-hidden bg-white">
+          <div class="skeleton h-48 w-full"></div>
+          <div class="p-5 space-y-3">
+            <div class="skeleton h-3 w-20 rounded-full"></div>
+            <div class="skeleton h-5 w-full rounded"></div>
+            <div class="skeleton h-5 w-3/4 rounded"></div>
+            <div class="skeleton h-4 w-full rounded"></div>
+            <div class="skeleton h-4 w-5/6 rounded"></div>
+            <div class="skeleton h-4 w-2/3 rounded"></div>
+            <div class="mt-4 skeleton h-9 w-32 rounded-lg"></div>
+          </div>
+        </div>
+      ))}
+    </div>
+
+    <!-- ── POSTS GRID (populated by JS) ── -->
+    <div id="posts-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 hidden"></div>
+
+    <!-- ── ERROR STATE ── -->
+    <div id="error-state" class="hidden flex flex-col items-center justify-center py-24 text-center">
+      <div class="font-mono-custom text-4xl mb-4 text-brand-muted">:(</div>
+      <h2 class="text-xl font-semibold text-brand-text mb-2">Could not load articles</h2>
+      <p id="error-msg" class="text-brand-muted text-sm max-w-sm mb-6">
+        The feed could not be reached. Check your connection or try again shortly.
+      </p>
+      <button
+        onclick="fetchPosts()"
+        class="font-mono-custom text-sm px-5 py-2 rounded-lg bg-brand-brown text-white
+               hover:bg-brand-brownDark transition-colors">
+        Retry →
+      </button>
+      <a href="https://medium.com/@mdtareksec" target="_blank" rel="noopener noreferrer"
+         class="mt-3 text-sm text-brand-brown underline underline-offset-2 hover:text-brand-brownDark">
+        Read on Medium directly
+      </a>
+    </div>
+
+    <!-- ── EMPTY STATE ── -->
+    <div id="empty-state" class="hidden flex flex-col items-center justify-center py-24 text-center">
+      <div class="font-mono-custom text-4xl mb-4 text-brand-muted">[ ]</div>
+      <h2 class="text-xl font-semibold text-brand-text mb-2">No posts found</h2>
+      <p class="text-brand-muted text-sm max-w-sm">
+        No articles match this filter yet. Try "All Posts" or check back soon.
+      </p>
+    </div>
+
+  </main>
+
+  <!-- ─── FOOTER ─── -->
+  <footer class="border-t border-brand-border bg-brand-surface">
+    <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-brand-muted">
+      <span>© 2026 Muhammad Tarek — <a href="https://techvrs.com" class="hover:text-brand-brown transition-colors">techvrs.com</a></span>
+      <span class="font-mono-custom text-xs">Built with focus &amp; coffee ☕</span>
+    </div>
+  </footer>
+
+</body>
+</html>
+
+<!-- ─────────────────────────────────────────────────────────────────────────
+     CLIENT-SIDE SCRIPT
+     Fetches Medium RSS via rss2json, renders post cards, handles filter pills.
+────────────────────────────────────────────────────────────────────────── -->
+<script is:inline>
+
+  // ── Config ──────────────────────────────────────────────────────────────
+  const MEDIUM_USERNAME = "mdtareksec";
+  const API_URL = `https://api.rss2json.com/v1/api.json?rss_url=https://medium.com/feed/@${MEDIUM_USERNAME}&api_key=&count=20`;
+
+  // Curated cybersecurity fallback images (royalty-free, Unsplash)
+  const FALLBACKS = [
+    "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=600&q=80", // monitors
+    "https://images.unsplash.com/photo-1563013544-824ae1b704d3?w=600&q=80", // lock
+    "https://images.unsplash.com/photo-1518770660439-4636190af475?w=600&q=80", // circuit
+    "https://images.unsplash.com/photo-1639762681057-408e52192e55?w=600&q=80", // dark code
+    "https://images.unsplash.com/photo-1614064641938-3bbee52942c7?w=600&q=80", // server
+    "https://images.unsplash.com/photo-1558494949-ef010cbdcc31?w=600&q=80", // binary
+  ];
+
+  // Colour palette for tag pills (cycles through)
+  const TAG_COLOURS = [
+    "bg-amber-50  text-amber-700  border-amber-200",
+    "bg-sky-50    text-sky-700    border-sky-200",
+    "bg-green-50  text-green-700  border-green-200",
+    "bg-purple-50 text-purple-700 border-purple-200",
+    "bg-rose-50   text-rose-700   border-rose-200",
+    "bg-teal-50   text-teal-700   border-teal-200",
+  ];
+
+  // ── State ────────────────────────────────────────────────────────────────
+  let allPosts        = [];
+  let activeTag       = "all";
+  let tagColourMap    = {};
+  let tagColourIndex  = 0;
+
+  // ── DOM refs ─────────────────────────────────────────────────────────────
+  const skeletonGrid  = document.getElementById("skeleton-grid");
+  const postsGrid     = document.getElementById("posts-grid");
+  const errorState    = document.getElementById("error-state");
+  const emptyState    = document.getElementById("empty-state");
+  const filterBar     = document.getElementById("filter-bar");
+  const postCount     = document.getElementById("post-count");
+  const countVisible  = document.getElementById("count-visible");
+  const countTotal    = document.getElementById("count-total");
+  const errorMsg      = document.getElementById("error-msg");
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  /**
+   * Extract the first <img> src from HTML content, or null.
+   */
+  function extractImage(htmlContent) {
+    const match = htmlContent && htmlContent.match(/<img[^>]+src=["']([^"']+)["']/i);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * Strip HTML tags and return plain text, truncated to `maxLen` chars.
+   */
+  function stripAndTruncate(html, maxLen = 160) {
+    const temp = document.createElement("div");
+    temp.innerHTML = html || "";
+    const text = (temp.textContent || temp.innerText || "").trim().replace(/\s+/g, " ");
+    return text.length > maxLen ? text.slice(0, maxLen).replace(/\s+\S*$/, "") + "…" : text;
+  }
+
+  /**
+   * Format ISO date string → "Jan 15, 2026"
+   */
+  function formatDate(dateStr) {
+    if (!dateStr) return "";
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+  }
+
+  /**
+   * Estimate reading time from content word count.
+   */
+  function readingTime(content) {
+    const temp = document.createElement("div");
+    temp.innerHTML = content || "";
+    const words = (temp.textContent || "").trim().split(/\s+/).length;
+    const mins  = Math.max(1, Math.round(words / 200));
+    return `${mins} min read`;
+  }
+
+  /**
+   * Get or assign a stable tag colour class string.
+   */
+  function tagColour(tag) {
+    if (!tagColourMap[tag]) {
+      tagColourMap[tag] = TAG_COLOURS[tagColourIndex % TAG_COLOURS.length];
+      tagColourIndex++;
+    }
+    return tagColourMap[tag];
+  }
+
+  /**
+   * Choose a fallback image deterministically based on post index.
+   */
+  function fallbackImg(index) {
+    return FALLBACKS[index % FALLBACKS.length];
+  }
+
+  // ── Card renderer ────────────────────────────────────────────────────────
+
+  function renderCard(post, index) {
+    const thumbnail = post.thumbnail
+      || extractImage(post.content)
+      || extractImage(post.description)
+      || fallbackImg(index);
+
+    const excerpt    = stripAndTruncate(post.description || post.content, 150);
+    const pubDate    = formatDate(post.pubDate);
+    const readTime   = readingTime(post.content);
+    const tags       = (post.categories || []).slice(0, 3);
+    const hasTag     = tags.length > 0;
+
+    // Build tag pills HTML
+    const tagPills = hasTag
+      ? tags.map(t =>
+          `<span class="inline-block text-[10px] font-mono-custom font-medium px-2 py-0.5 rounded-full border ${tagColour(t)}">${t}</span>`
+        ).join(" ")
+      : `<span class="inline-block text-[10px] font-mono-custom font-medium px-2 py-0.5 rounded-full border bg-stone-50 text-stone-500 border-stone-200">Blog</span>`;
+
+    const card = document.createElement("article");
+    card.className = "blog-card animate-fade-up rounded-2xl border border-brand-border overflow-hidden bg-white flex flex-col";
+
+    card.innerHTML = `
+      <!-- Thumbnail -->
+      <a href="${post.link}" target="_blank" rel="noopener noreferrer"
+         class="block relative overflow-hidden h-48 shrink-0 bg-stone-100 group" aria-hidden="true" tabindex="-1">
+        <img
+          src="${thumbnail}"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+          onerror="this.onerror=null; this.src='${fallbackImg(index + 1)}';"
+        />
+        <!-- Gradient overlay -->
+        <div class="absolute inset-0 bg-gradient-to-t from-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+      </a>
+
+      <!-- Card body -->
+      <div class="flex flex-col flex-1 p-5 gap-3">
+
+        <!-- Tags & date row -->
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex flex-wrap gap-1.5">${tagPills}</div>
+          <time datetime="${post.pubDate}" class="font-mono-custom text-[10px] text-brand-muted shrink-0">
+            ${pubDate}
+          </time>
+        </div>
+
+        <!-- Title -->
+        <h2 class="text-base font-semibold text-brand-text line-clamp-2 leading-snug">
+          <a href="${post.link}" target="_blank" rel="noopener noreferrer"
+             class="hover:text-brand-brown transition-colors">
+            ${post.title || "Untitled"}
+          </a>
+        </h2>
+
+        <!-- Excerpt -->
+        <p class="text-sm text-brand-muted leading-relaxed line-clamp-3 flex-1">
+          ${excerpt || "No preview available."}
+        </p>
+
+        <!-- Footer row -->
+        <div class="flex items-center justify-between pt-2 border-t border-brand-border mt-auto">
+          <span class="font-mono-custom text-[10px] text-brand-muted flex items-center gap-1">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+            </svg>
+            ${readTime}
+          </span>
+
+          <a href="${post.link}" target="_blank" rel="noopener noreferrer"
+             class="font-mono-custom text-xs font-medium px-3 py-1.5 rounded-lg
+                    bg-brand-brown text-white hover:bg-brand-brownDark
+                    transition-colors duration-200 inline-flex items-center gap-1">
+            Read Article
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+            </svg>
+          </a>
+        </div>
+      </div>
+    `;
+
+    return card;
+  }
+
+  // ── Filter pills ─────────────────────────────────────────────────────────
+
+  function buildFilterPills(posts) {
+    const tagSet = new Set();
+    posts.forEach(p => (p.categories || []).forEach(t => tagSet.add(t)));
+
+    // Remove old pills except "All Posts"
+    const existing = filterBar.querySelectorAll(".filter-btn:not([data-tag='all'])");
+    existing.forEach(el => el.remove());
+
+    tagSet.forEach(tag => {
+      const btn = document.createElement("button");
+      btn.dataset.tag = tag;
+      btn.className = "filter-btn font-mono-custom text-xs px-3 py-1.5 rounded-full border border-brand-border text-brand-muted transition-all duration-200 hover:border-brand-brown hover:text-brand-brown";
+      btn.textContent = tag;
+      btn.addEventListener("click", () => setFilter(tag));
+      filterBar.appendChild(btn);
+    });
+
+    // Attach listener to "All" button
+    document.querySelector(".filter-btn[data-tag='all']")
+      .addEventListener("click", () => setFilter("all"));
+  }
+
+  function setFilter(tag) {
+    activeTag = tag;
+
+    // Update pill active state
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.tag === tag);
+    });
+
+    renderPosts();
+  }
+
+  // ── Render posts (respects active filter) ───────────────────────────────
+
+  function renderPosts() {
+    const filtered = activeTag === "all"
+      ? allPosts
+      : allPosts.filter(p => (p.categories || []).includes(activeTag));
+
+    postsGrid.innerHTML = "";
+
+    if (filtered.length === 0) {
+      postsGrid.classList.add("hidden");
+      emptyState.classList.remove("hidden");
+      postCount.classList.add("hidden");
+      return;
+    }
+
+    emptyState.classList.add("hidden");
+    postsGrid.classList.remove("hidden");
+    postCount.classList.remove("hidden");
+    countVisible.textContent = filtered.length;
+    countTotal.textContent   = allPosts.length;
+
+    filtered.forEach((post, i) => {
+      postsGrid.appendChild(renderCard(post, i));
+    });
+  }
+
+  // ── Fetch ────────────────────────────────────────────────────────────────
+
+  async function fetchPosts() {
+    // Reset states
+    skeletonGrid.classList.remove("hidden");
+    postsGrid.classList.add("hidden");
+    errorState.classList.add("hidden");
+    emptyState.classList.add("hidden");
+    postCount.classList.add("hidden");
+
+    try {
+      const res = await fetch(API_URL, { cache: "no-cache" });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      const data = await res.json();
+
+      if (data.status !== "ok") {
+        throw new Error(data.message || "Feed returned a non-ok status.");
+      }
+
+      allPosts = data.items || [];
+
+      if (allPosts.length === 0) {
+        throw new Error("EMPTY");
+      }
+
+      buildFilterPills(allPosts);
+
+      skeletonGrid.classList.add("hidden");
+      renderPosts();
+
+    } catch (err) {
+      skeletonGrid.classList.add("hidden");
+
+      if (err.message === "EMPTY") {
+        emptyState.classList.remove("hidden");
+      } else {
+        errorMsg.textContent = err.message.startsWith("HTTP")
+          ? `API error: ${err.message}. The feed service may be temporarily unavailable.`
+          : "Unable to reach the RSS feed. Check your connection or try again.";
+        errorState.classList.remove("hidden");
+      }
+
+      console.error("[techvrs/blog] fetchPosts error:", err);
+    }
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────
+  fetchPosts();
+
+</script>

@@ -1,11 +1,5 @@
 --
 
-
-// blog.astro — Techvrs Blog Page
-// Dynamically fetches latest posts from Medium via rss2json (client-side)
-// No redeploy needed when new posts are published on Medium.
-
-interface Props {
   title?: string;
 }
 
